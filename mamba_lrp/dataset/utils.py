@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 from transformers import AdamW
-from general_dataset import get_medbios_dataset
+from mamba_lrp.dataset.general_dataset import get_medbios_dataset
 from mamba_ssm.models.modeling_mamba import MambaLMHeadModel
 
 def create_medbios_mamba_weights(model, tokenizer):
