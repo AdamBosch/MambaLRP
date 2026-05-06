@@ -71,3 +71,23 @@ def get_sst_dataset(
         )
 
     return dataset
+
+def get_medbios_dataset(
+        tokenizer,
+        max_length=512,
+        truncation=True,
+        split='test'
+):
+    dataset = load_dataset("coastalcph/medical-bios")
+
+    if split == 'train':
+        data = dataset["train"]
+    else:
+        data = dataset["test"]
+    return GeneralDataset(
+        inputs=data["text"],
+        targets=data["label"],
+        tokenizer=tokenizer,
+        max_length=max_length,
+        truncation=truncation
+    )
