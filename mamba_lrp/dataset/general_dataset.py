@@ -78,7 +78,7 @@ def get_medbios_dataset(
         truncation=True,
         split='test'
 ):
-    dataset = load_dataset("coastalcph/medical-bios")
+    dataset = load_dataset("coastalcph/medical-bios", "standard")
 
     if split == 'train':
         data = dataset["train"]
