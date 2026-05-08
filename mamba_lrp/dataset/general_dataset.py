@@ -93,3 +93,34 @@ def get_medbios_dataset(
         max_length=max_length,
         truncation=truncation
     )
+
+def get_snli_dataset(
+    tokenizer,
+    max_length=512,
+    truncation=True,
+    split="test"
+):
+    dataset = load_dataset("stanfordnlp/snli")
+
+    if split == "train":
+        data = dataset["train"]
+    elif split == "validation":
+        data = dataset["validation"]
+    else:
+        data = dataset["test"]
+
+    valid_indices = [i for i, label in enumerate(data["label"]) if label != -1]
+
+    inputs = [
+        f"Premise: {data['sentence1'][i]} Hypothesis: {data['sentence2'][i]}"
+        for i in valid_indices
+    ]
+    targets = [data["label"][i] for i in valid_indices]
+
+    return GeneralDataset(
+        inputs=inputs,
+        targets=targets,
+        tokenizer=tokenizer,
+        max_length=max_length,
+        truncation=truncation
+    )
