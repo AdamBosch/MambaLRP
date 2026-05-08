@@ -1,115 +1,209 @@
 import torch
-from torch.utils.data import DataLoader, Subset, ConcatDataset
+from torch.utils.data import DataLoader
 from transformers import AdamW
 from torch.optim.lr_scheduler import LinearLR
 from tqdm import tqdm
 
+
 def train_medbios_local(model, tokenizer, device):
-    # 1. LOAD AND COMBINE DATASETS
-    # Load multiple splits to reach the 10,000 sample requirement
-    train_pool = get_medbios_dataset(tokenizer, split='train') # Likely 8,000 samples
-    eval_pool = get_medbios_dataset(tokenizer, split='dev')
-    test_pool = get_medbios_dataset(tokenizer, split='test')   # Typically 2,000 samples
-    
-    # Combine them into one large dataset of ~10,000
-    full_dataset = ConcatDataset([train_pool, test_pool, eval_pool])
-    total_size = len(full_dataset)
-    print(f"Total dataset size: {total_size}")
 
-    # Define requested sizes
-    train_size, val_size, test_size = 7200, 900, 900
-    
-    # Safety check: Adjust if the dataset is smaller than 10k
-    if total_size < (train_size + val_size + test_size):
-        print(f"Warning: Dataset size ({total_size}) is smaller than requested 10k.")
-        # Optional: Proportional split logic here if needed
-    
-    # 2. CREATE SUBSETS
-    train_dataset = Subset(full_dataset, range(0, train_size))
-    val_dataset = Subset(full_dataset, range(train_size, train_size + val_size))
-    test_dataset = Subset(full_dataset, range(train_size + val_size, train_size + val_size + test_size))
+    # =========================================================
+    # 1. LOAD DATASETS PROPERLY
+    # =========================================================
+    train_dataset = get_medbios_dataset(tokenizer, split='train')
+    val_dataset = get_medbios_dataset(tokenizer, split='validation')
+    test_dataset = get_medbios_dataset(tokenizer, split='test')
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    print(f"Train size: {len(train_dataset)}")
+    print(f"Validation size: {len(val_dataset)}")
+    print(f"Test size: {len(test_dataset)}")
 
-    # 3. SETUP MODEL & OPTIMIZER
+    # =========================================================
+    # 2. DATALOADERS
+    # =========================================================
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=32,
+        shuffle=True
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=32,
+        shuffle=False
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=32,
+        shuffle=False
+    )
+
+    # =========================================================
+    # 3. FREEZE MODEL
+    # =========================================================
     for param in model.parameters():
         param.requires_grad = False
-    
-    model.lm_head = torch.nn.Linear(768, 5, bias=True).to(device)
-    optimizer = AdamW(model.lm_head.parameters(), lr=7e-5)
-    criterion = torch.nn.CrossEntropyLoss()
-    
-    # Linear scheduler with initial factor of 0.5
-    # total_iters should ideally match the number of steps or epochs
-    scheduler = LinearLR(optimizer, start_factor=0.5, total_iters=5)
 
+    # Replace classification head
+    model.lm_head = torch.nn.Linear(768, 5, bias=True).to(device)
+
+    optimizer = AdamW(model.lm_head.parameters(), lr=7e-5)
+
+    criterion = torch.nn.CrossEntropyLoss()
+
+    scheduler = LinearLR(
+        optimizer,
+        start_factor=0.5,
+        total_iters=5
+    )
+
+    # =========================================================
+    # 4. TRAINING
+    # =========================================================
     best_val_loss = float('inf')
     max_epochs = 10
 
     for epoch in range(max_epochs):
-        # --- TRAINING ---
+
+        # ---------------- TRAIN ----------------
         model.train()
+
         total_train_loss = 0
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]")
-        
+
+        pbar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1} [Train]"
+        )
+
         for batch in pbar:
+
             optimizer.zero_grad()
+
             input_ids = batch['input_ids'].to(device)
             labels = batch['label'].to(device)
-            
-            outputs = model(input_ids)
-            logits = outputs.logits[:, -1, :] 
-            loss = criterion(logits, labels)
-            loss.backward()
-            optimizer.step()
-            
-            total_train_loss += loss.item()
-            pbar.set_postfix({'loss': f"{loss.item():.4f}"})
 
-        # --- VALIDATION ---
+            outputs = model(input_ids)
+
+            pad_id = tokenizer.pad_token_id
+            seq_lengths = (input_ids != pad_id).sum(dim=1) - 1
+            logits = outputs.logits[torch.arange(input_ids.size(0)), seq_lengths]
+            
+            loss = criterion(logits, labels)
+
+            loss.backward()
+
+            optimizer.step()
+
+            total_train_loss += loss.item()
+
+            pbar.set_postfix({
+                'loss': f"{loss.item():.4f}"
+            })
+
+        avg_train_loss = total_train_loss / len(train_loader)
+
+        # ---------------- VALIDATION ----------------
         model.eval()
+
         total_val_loss = 0
+        correct = 0
+        total = 0
+
         with torch.no_grad():
+
             for batch in val_loader:
+
                 input_ids = batch['input_ids'].to(device)
                 labels = batch['label'].to(device)
+
                 outputs = model(input_ids)
-                logits = outputs.logits[:, -1, :]
-                total_val_loss += criterion(logits, labels).item()
-        
+
+                pad_id = tokenizer.pad_token_id
+                seq_lengths = (input_ids != pad_id).sum(dim=1) - 1
+                logits = outputs.logits[torch.arange(input_ids.size(0)), seq_lengths]
+                
+                loss = criterion(logits, labels)
+
+                total_val_loss += loss.item()
+
+                preds = torch.argmax(logits, dim=-1)
+
+                correct += (preds == labels).sum().item()
+                total += labels.size(0)
+
         avg_val_loss = total_val_loss / len(val_loader)
-        print(f"Epoch {epoch+1}: Val Loss: {avg_val_loss:.4f}")
-        
+        val_accuracy = correct / total
+
+        print(
+            f"Epoch {epoch + 1} | "
+            f"Train Loss: {avg_train_loss:.4f} | "
+            f"Val Loss: {avg_val_loss:.4f} | "
+            f"Val Acc: {val_accuracy * 100:.2f}%"
+        )
+
         scheduler.step()
 
-        # --- EARLY STOPPING ---
+        # ---------------- EARLY STOPPING ----------------
         if avg_val_loss < best_val_loss:
+
             best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), 'mamba_medbios_weights.pt')
+
+            torch.save(
+                model.state_dict(),
+                'mamba_medbios_weights.pt'
+            )
+
+            print("Saved best model.")
+
         else:
-            print("Validation loss stopped improving. Stopping early.")
+            print("Validation loss stopped improving. Early stopping.")
             break
 
-    # --- FINAL TEST ---
+    # =========================================================
+    # 5. FINAL TEST EVALUATION
+    # =========================================================
     print("\nEvaluating on Test Set...")
-    model.load_state_dict(torch.load('mamba_medbios_best.pt'))
+
+    model.load_state_dict(
+        torch.load('mamba_medbios_weights.pt')
+    )
+
     model.eval()
+
     correct = 0
     total = 0
+
     with torch.no_grad():
+
         for batch in test_loader:
+
             input_ids = batch['input_ids'].to(device)
             labels = batch['label'].to(device)
+
             outputs = model(input_ids)
-            preds = torch.argmax(outputs.logits[:, -1, :], dim=-1)
+
+            pad_id = tokenizer.pad_token_id
+            seq_lengths = (input_ids != pad_id).sum(dim=1) - 1
+            logits = outputs.logits[torch.arange(input_ids.size(0)), seq_lengths]
+            
+            preds = torch.argmax(logits, dim=-1)
+
             correct += (preds == labels).sum().item()
             total += labels.size(0)
-    
-    print(f"Final Test Accuracy: {(correct/total)*100:.2f}%")
 
-# Execution block
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    test_accuracy = correct / total
+
+    print(f"Final Test Accuracy: {test_accuracy * 100:.2f}%")
+
+
+# =========================================================
+# EXECUTION
+# =========================================================
+device = torch.device(
+    'cuda' if torch.cuda.is_available() else 'cpu'
+)
+
 model.to(device)
+
 train_medbios_local(model, tokenizer, device)
