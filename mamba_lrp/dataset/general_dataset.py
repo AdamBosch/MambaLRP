@@ -82,6 +82,8 @@ def get_medbios_dataset(
 
     if split == 'train':
         data = dataset["train"]
+    elif split == 'dev':
+        data = dataset["dev"]
     else:
         data = dataset["test"]
     return GeneralDataset(
