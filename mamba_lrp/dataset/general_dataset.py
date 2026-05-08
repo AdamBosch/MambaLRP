@@ -100,26 +100,21 @@ def get_snli_dataset(
     truncation=True,
     split="test"
 ):
-    dataset = load_dataset("stanfordnlp/snli")
+    data = load_dataset("stanfordnlp/snli", split=split)
 
-    if split == "train":
-        data = dataset["train"]
-    elif split == "validation":
-        data = dataset["validation"]
-    else:
-        data = dataset["test"]
-
-    valid_indices = [i for i, label in enumerate(data["label"]) if label != -1]
+    valid_data = data.filter(lambda x: x["label"] != -1)
 
     inputs = [
-        f"premise: {data['premise'][i]} hypothesis: {data['hypothesis'][i]}"
-        for i in valid_indices
+        f"premise: {premise} hypothesis: {hypothesis}"
+        for premise, hypothesis in zip(
+            valid_data["premise"],
+            valid_data["hypothesis"]
+        )
     ]
-    targets = [data["label"][i] for i in valid_indices]
 
     return GeneralDataset(
         inputs=inputs,
-        targets=targets,
+        targets=valid_data["label"],
         tokenizer=tokenizer,
         max_length=max_length,
         truncation=truncation
