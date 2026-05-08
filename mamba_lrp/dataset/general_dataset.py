@@ -112,7 +112,7 @@ def get_snli_dataset(
     valid_indices = [i for i, label in enumerate(data["label"]) if label != -1]
 
     inputs = [
-        f"Premise: {data['sentence1'][i]} Hypothesis: {data['sentence2'][i]}"
+        f"premise: {data['premise'][i]} hypothesis: {data['hypothesis'][i]}"
         for i in valid_indices
     ]
     targets = [data["label"][i] for i in valid_indices]
