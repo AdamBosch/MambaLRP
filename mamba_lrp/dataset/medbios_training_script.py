@@ -42,13 +42,13 @@ def train_medbios_local(model, tokenizer, device):
     # =========================================================
     # 3. FREEZE MODEL
     # =========================================================
-    for param in model.parameters():
-        param.requires_grad = False
+    # for param in model.parameters():
+    #     param.requires_grad = False
 
     # Replace classification head
     model.lm_head = torch.nn.Linear(768, 5, bias=True).to(device)
 
-    optimizer = AdamW(model.lm_head.parameters(), lr=7e-5)
+    optimizer = AdamW(model.parameters(), lr=7e-5)
 
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -63,6 +63,9 @@ def train_medbios_local(model, tokenizer, device):
     # =========================================================
     best_val_loss = float('inf')
     max_epochs = 10
+    
+    patience = 3
+    no_improve_count = 0
 
     for epoch in range(max_epochs):
 
@@ -157,8 +160,11 @@ def train_medbios_local(model, tokenizer, device):
             print("Saved best model.")
 
         else:
-            print("Validation loss stopped improving. Early stopping.")
-            break
+            no_improve_count += 1
+            print(f"No improvement ({no_improve_count}/{patience})")
+            if no_improve_count >= patience:
+                print("Early stopping.")
+                break
 
     # =========================================================
     # 5. FINAL TEST EVALUATION

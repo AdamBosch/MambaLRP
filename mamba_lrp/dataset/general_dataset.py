@@ -111,6 +111,22 @@ def get_bias_in_bios_dataset(
         max_length=max_length,
         truncation=truncation
     )
+    
+
+def get_emotion_dataset(
+    tokenizer,
+    max_length=512,
+    truncation=True,
+    split='test'
+):
+    dataset = load_dataset("philschmid/emotion", split=split)
+    return GeneralDataset(
+        inputs=dataset["text"],
+        targets=dataset["label"],
+        tokenizer=tokenizer,
+        max_length=max_length,
+        truncation=truncation
+    )
 
 def get_snli_dataset(
     tokenizer,
