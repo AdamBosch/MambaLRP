@@ -94,6 +94,28 @@ def get_medbios_dataset(
         truncation=truncation
     )
 
+def get_bias_in_bios_dataset(
+        tokenizer,
+        max_length=512,
+        truncation=True,
+        split='test'
+):
+    dataset = load_dataset("LabHC/bias_in_bios")
+
+    if split == 'train':
+        data = dataset["train"]
+    elif split == 'validation':
+        data = dataset["dev"]
+    else:
+        data = dataset["test"]
+    return GeneralDataset(
+        inputs=data["hard_text"],
+        targets=data["profession"],
+        tokenizer=tokenizer,
+        max_length=max_length,
+        truncation=truncation
+    )
+
 def get_snli_dataset(
     tokenizer,
     max_length=512,
