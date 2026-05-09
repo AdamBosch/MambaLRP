@@ -98,9 +98,12 @@ def get_bias_in_bios_dataset(
         tokenizer,
         max_length=512,
         truncation=True,
-        split='test'
+        split='test',
+        max_samples = None
 ):
     dataset = load_dataset("LabHC/bias_in_bios")
+    if max_samples is not None:
+        dataset = dataset.select(range(max_samples))
 
     if split == 'train':
         data = dataset["train"]
