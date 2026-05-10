@@ -153,3 +153,25 @@ def get_snli_dataset(
         max_length=max_length,
         truncation=truncation
     )
+
+class ImageNetDataset(Dataset):
+    def __init__(self, split="validation", transform=None, max_samples=None):
+        self.data = load_dataset("imagenet-1k", split=split)
+        if max_samples is not None:
+            self.data = self.data.select(range(max_samples))
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        img = self.data[i]["image"].convert("RGB")   # PIL → RGB
+        label = self.data[i]["label"]
+        if self.transform:
+            img = self.transform(img)
+        return {"pixel_values": img, "label": label}
+
+def get_imagenet_dataset(transform, split="validation", max_samples=None, n_classes=1000):
+    # n_classes kept as parameter for API consistency — Vim-S always has 1000
+    assert n_classes == 1000, "Vim-S is pretrained on 1000 ImageNet classes"
+    return ImageNetDataset(split=split, transform=transform, max_samples=max_samples)
