@@ -69,6 +69,14 @@ def get_sst_dataset(
             max_length,
             truncation
         )
+    elif split == 'test':
+        dataset = GeneralDataset(
+            dataset["test"]["sentence"],
+            dataset["test"]["label"],
+            tokenizer,
+            max_length,
+            truncation
+        )
 
     return dataset
 
